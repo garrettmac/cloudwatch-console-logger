@@ -2,14 +2,6 @@
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
-var uuid = require('uuid/v4');
-var moment = require('moment');
-var correlationId = global.correlationId = uuid();
-/*
-  * lets create instances of the console objects as a backup unless we wanna revert back as some point.
-  * We do not do this but can if we set an enviornment variable DISABLE_LAMBDA_LOGGER to true.
-  * In addtion it's ok to do it here like this as we are binding to them
-*/
 var consoleLog = console.log.bind(console);
 var consoleInfo = console.info.bind(console);
 var consoleWarn = console.warn.bind(console);
@@ -36,10 +28,6 @@ var initCloudwatchConsole = function initCloudwatchConsole(event, ctx) {
     timeZone: process.env.TZ,
     enviornment: process.env.NODE_ENV,
     'x-amzn-requestid': ctx.awsRequestId,
-    'x-amz-cf-id': event.headers['X-Amz-Cf-Id'],
-    'x-amzn-trace-id': event.headers['X-Amzn-Trace-Id'],
-    // TODO: next step is to get a correlation id created by akamai. Not sure how it's passed and I would start by checking the headers when it's in the stage or prod env.
-    asctime: moment().format('YYYY-MM-DD HH:MM:SS,SSS'),
     'pr-number': process.env.PR || 'UNDEF',
     cookies: event.headers.Cookie,
     headers: event.headers,

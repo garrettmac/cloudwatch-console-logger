@@ -1,9 +1,10 @@
 {
   "name": "cloudwatch-console-logger",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "description": "cloudwatch-console-logger",
   "main": "./dist/index.js",
   "scripts": {
+    "precommit": "npm run build",
     "build": "babel -d dist src/",
     "test": "jest",
     "test:coverage": "jest --coverage && cat ./coverage/lcov.info | ./node_modules/coveralls/bin/coveralls.js",
