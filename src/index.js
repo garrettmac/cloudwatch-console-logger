@@ -20,43 +20,52 @@ const getLogLevel = (level = 0) =>
     10: 'DEBUG',
     0: 'NOTSET'
   }[level]);
-let getLoggerData = {};
-// This overwrites the follow console methods to print nicely for loggly
-const initCloudwatchConsole = function(context, event) {
-  getLoggerData = {
+let loggerMessageObj = {};
+/*
+ "initCloudwatchConsole" is not wired up now, seems like a bug with node 6.
+ AWS seems to run the "handler" silently a few times calling the imported functions
+ before they are ready, in this case sets overides before the lambda starts and cloudwatch farts out.
+ Works fine when using node 8 and up.
+ So when our lambda is running on node 8 we can just add this in our "handler" and that's all we need:
+ > "Logger.initCloudwatchConsole( event, context )"
+*/
+const initCloudwatchConsole = function(event, ctx) {
+  loggerMessageObj = {
     executionEnv: process.env.AWS_EXECUTION_ENV,
-    repoName: 'ecom-web-app',
     awsLambdaFunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
     awsRegion: process.env.AWS_REGION,
     timeZone: process.env.TZ,
     enviornment: process.env.NODE_ENV,
-    'lambda-request-id': context.requestContext.requestId,
-    'x-amzn-requestid': event.awsRequestId,
-    'x-amz-cf-id': context.headers['X-Amz-Cf-Id'],
-    'x-amzn-trace-id': context.headers['X-Amzn-Trace-Id'],
+    'lambda-request-id': event.requestContext.requestId,
+    'x-amzn-requestid': ctx.awsRequestId,
+    'x-amz-cf-id': event.headers['X-Amz-Cf-Id'],
+    'x-amzn-trace-id': event.headers['X-Amzn-Trace-Id'],
     // TODO: next step is to get a correlation id created by akamai. Not sure how it's passed and I would start by checking the headers when it's in the stage or prod env.
     asctime: moment().format('YYYY-MM-DD HH:MM:SS,SSS'),
-    'x-lll-ecom-correlation-id': correlationId,
     'pr-number': process.env.PR || 'UNDEF',
-    cookies: context.headers.Cookie,
-    headers: context.headers,
-    allHeaders: global.headers,
-    hostName: context.headers.Host
+    cookies: event.headers.Cookie,
+    headers: event.headers,
+    hostName: event.headers.Host
   };
-  if (process.env.ENABLE_CONSOLE_OVERIDE) {
-    overrideConsole();
+  overrideConsole();
+  if (process.env.DISABLE_CONSOLE_OVERIDE) {
+    resetToDefaultConsole();
   }
-  console.info(`Lambda function'${process.env.AWS_LAMBDA_FUNCTION_NAME}' default log level is set to ${getLogLevel(process.env.LOG_LEVEL)}`);
+  console.info(`Lambda function '${process.env.AWS_LAMBDA_FUNCTION_NAME}' default log level is set to ${getLogLevel(process.env.LOG_LEVEL)}`);
+};
+const init = function(o) {
+  loggerMessageObj = o;
 };
 // this is what overrides the console object
-const consoleOverride = function(...msg) {
+const consoleOverride = function() {
+  const msg = Array.prototype.slice.call(arguments);
+  const asctime = moment().format('YYYY-MM-DD HH:MM:SS,SSS');
   try {
     throw new Error();
   } catch (error) {
     let stackTrace;
-    if (process.env.ENABLE_STACKTRACE) {
-      stackTrace = error
-        .stack // Grabs the stack trace
+    if (!process.env.DISABLE_STACKTRACE) {
+      stackTrace = error.stack // Grabs the stack trace
         .split('\n')[2] // Grabs third line
         .trim() // Removes spaces
         .substring(3) // Removes three first characters ("at ")
@@ -64,14 +73,17 @@ const consoleOverride = function(...msg) {
         .replace(/\s\(./, ' at ') // Removes first parentheses and replaces it with " at "
         .replace(/\)/, ''); // Removes last parentheses
     }
-    const { logValue,logMethod } = this;
+    const { logValue, logMethod } = this;
     const logLevel = getLogLevel(logValue || process.env.LOG_LEVEL);
-    const message = msg.map(o => (typeof o === 'object' ? JSON.stringify(o) : o)).join(' '); // avoid "[lib/ssr-util] [Object Object] scenario"
+    const message = msg
+      .map(o => (typeof o === 'object' ? JSON.stringify(o) : o))
+      .join(' '); // avoid "[lib/ssr-util] [Object Object] scenario"
+    if (!message) return;
     // const message = msg.join(' '); // avoid "[lib/ssr-util] [Object Object] scenario"
     process.stdout.write(
       JSON.stringify(
-        Object.assign({}, getLoggerData, {
-        // get component name if console.log statement start with "[" (for example "[component/home] my home")
+        Object.assign({}, loggerMessageObj, {
+          // get component name if console.log statement start with "[" (for example "[component/home] my home")
           get componentName() {
             if (typeof message !== 'string') return undefined;
             const cmptName = message.match(/^\[(.*?)\]/); // grab what is inside "[" and "]" (again only when it start with "[")
@@ -79,6 +91,7 @@ const consoleOverride = function(...msg) {
           },
           // output message
           message,
+          asctime,
           stackTrace,
           logLevel,
           logMethod,
@@ -95,27 +108,35 @@ const resetToDefaultConsole = () => {
   global.console.error = consoleError;
 };
 const overrideConsole = () => {
-  global.console = {
-    log :  consoleOverride.bind({ logMethod: 'log', logValue:'20' }),
-    info :  consoleOverride.bind({ logMethod: 'info', logValue:'20' }),
-    warn : consoleOverride.bind({ logMethod: 'warn', logValue:'30' }),
-    error : consoleOverride.bind({ logMethod: 'error', logValue:'40' }),
-    critical : consoleOverride.bind({ logMethod: 'critical', logValue:'50' })
-  };
+  if (process.env.DISABLE_CONSOLE_OVERIDE === 'true') return;
+  global.console.log = consoleOverride.bind({
+    logMethod: 'log',
+    logValue: '20'
+  });
+  global.console.info = consoleOverride.bind({
+    logMethod: 'info',
+    logValue: '20'
+  });
+  global.console.warn = consoleOverride.bind({
+    logMethod: 'warn',
+    logValue: '30'
+  });
+  global.console.error = consoleOverride.bind({
+    logMethod: 'error',
+    logValue: '40'
+  });
 };
 global.logger = {
-  log :  consoleOverride.bind({ logMethod: 'log', logValue:'20' }),
-  info :  consoleOverride.bind({ logMethod: 'info', logValue:'20' }),
-  warn : consoleOverride.bind({ logMethod: 'warn', logValue:'30' }),
-  error : consoleOverride.bind({ logMethod: 'error', logValue:'40' }),
-  critical : consoleOverride.bind({ logMethod: 'critical', logValue:'50' })
+  log: consoleOverride.bind({ logMethod: 'log', logValue: '20' }),
+  info: consoleOverride.bind({ logMethod: 'info', logValue: '20' }),
+  warn: consoleOverride.bind({ logMethod: 'warn', logValue: '30' }),
+  error: consoleOverride.bind({ logMethod: 'error', logValue: '40' })
 };
-exports.consoleLog = consoleLog;
-exports.consoleWarn = consoleWarn;
-exports.consoleError = consoleError;
-exports.getLoggerData = getLoggerData;
+exports.loggerMessageObj = loggerMessageObj;
+exports.init = init;
+exports.correlationId = correlationId;
+exports.initCloudwatchConsole = initCloudwatchConsole;
 exports.getLogLevel = getLogLevel;
 exports.overrideConsole = overrideConsole;
-exports.initCloudwatchConsole = initCloudwatchConsole;
 exports.consoleOverride = consoleOverride;
 exports.resetToDefaultConsole = resetToDefaultConsole;

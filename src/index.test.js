@@ -21,6 +21,9 @@ const event = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.162 Safari/537.36',
     'X-Forwarded-Port': '111',
     'X-Forwarded-Proto': 'http'
+  },
+  requestContext: {
+    requestId: 'XXXXXXXXXX'
   }
 };
 const context = {
@@ -44,7 +47,7 @@ const MOCK_ENV = {
   LOG_LEVEL: '0',
   ENABLE_CONSOLE_OVERIDE: true,
   ENABLE_STACKTRACE: false,
-  PR_NUMBER: '12345', //can set enviorment variable
+  PR: '12345', //can set enviorment variable
   STAGE: '',
   TZ: 'pacific'
 };
@@ -112,8 +115,8 @@ describe('Cloudwatch Console Logger', () => {
       },
       hostName: 'example.com',
       logLevel: 'INFO',
-      message: "Lambda function'myLambdaFunction' default log level is set to NOTSET",
-      prNumber: '12345',
+      message: "Lambda function 'myLambdaFunction' default log level is set to NOTSET",
+      'pr-number': '12345',
       timeZone: 'pacific'
     };
     //this silences logs from being displayed
@@ -159,10 +162,10 @@ describe('Cloudwatch Console Logger', () => {
     });
     it('should have log method "log" defined in global scope', () => {
       jest.spyOn(logger, 'log');
-      logger.log('hackerman logie boi');
+      logger.log('this is a log');
       unhook_intercept();
       const [ log ] = logs;
-      expect(logger.log).toBeCalledWith('hackerman logie boi');
+      expect(logger.log).toBeCalledWith('this is a log');
       expect(logs.length).toBe(1);
       expect(log.logLevel).toBe('INFO');
     });
@@ -177,19 +180,19 @@ describe('Cloudwatch Console Logger', () => {
         expect(Logger[fn]).toBeDefined();
       });
     });
-    it('should not return "prNumber" if "process.env.PR_NUMBER" is not defined',()=>{
-      delete process.env.PR_NUMBER;
+    it('should not return "pr-number" if "process.env.PR" is not defined',()=>{
+      delete process.env.PR;
       Logger.initCloudwatchConsole(event, context);
       unhook_intercept();
       const [ initialMessage ] = logs;
-      expect(initialMessage.prNumber).toMatch('UNDEF');
+      expect(initialMessage['pr-number']).toMatch('UNDEF');
     });
-    it('should return "prNumber" if "process.env.PR_NUMBER" is defined',()=>{
-      process.env.PR_NUMBER = '123';
+    it('should return "pr-number" if "process.env.PR" is defined',()=>{
+      process.env.PR = '123';
       Logger.initCloudwatchConsole(event, context);
       unhook_intercept();
       const [ initialMessage ] = logs;
-      expect(initialMessage.prNumber).toMatch('123');
+      expect(initialMessage['pr-number']).toMatch('123');
     });
     it('should call "getLogLevel()"',()=>{
       delete process.env.LOG_LEVEL;
