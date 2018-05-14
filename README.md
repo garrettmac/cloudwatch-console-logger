@@ -3,7 +3,9 @@
 [![Build Status](https://travis-ci.org/garrettmac/cloudwatch-console-logger.svg?branch=master)](https://travis-ci.org/garrettmac/cloudwatch-console-logger)
 [![Coverage Status](https://coveralls.io/repos/github/garrettmac/cloudwatch-console-logger/badge.svg?branch=master)](https://coveralls.io/github/garrettmac/cloudwatch-console-logger?branch=master)
 
-
+[![GitHub stars:](https://img.shields.io/github/stars/garrettmac/cloudwatch-console-logger.svg)](https://img.shields.io/github/stars/garrettmac/cloudwatch-console-logger.svg)
+[![GitHub license:](https://img.shields.io/github/license/garrettmac/cloudwatch-console-logger.svg)](https://img.shields.io/github/license/garrettmac/cloudwatch-console-logger.svg)
+[![Twitter:](https://img.shields.io/twitter/url/https/github.com/garrettmac/cloudwatch-console-logger.svg?style=social)](https://img.shields.io/twitter/url/https/github.com/garrettmac/cloudwatch-console-logger.svg?style=social)
 
 ## Getting started
 
@@ -25,32 +27,21 @@ import CloudwatchConsoleLogger from 'cloudwatch-console-logger'
  CloudwatchConsoleLogger.init({
     awsLambdaFunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
     awsRegion: process.env.AWS_REGION,
-    timeZone: process.env.TZ,
-    enviornment: process.env.STAGE,
-    prNumber: process.env.PR || 'UNDEF',
-    cookies: event.headers.Cookie,
-    headers: event.headers,
-    hostName: event.headers.Host
+    timeZone: process.env.TZ
   });
 
 
 
-  logger.info(`Hello world`);
+  logger.info('Hello world');
   
   /* 
 prints on server side only
    {
        // initial data
-    awsLambdaFunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
-    awsRegion: process.env.AWS_REGION,
-    timeZone: process.env.TZ,
-    enviornment: process.env.STAGE,
-    prNumber: process.env.PR || 'UNDEF',
-    cookies: event.headers.Cookie,
-    headers: event.headers,
-    hostName: event.headers.Host,
+    awsLambdaFunctionName: "myLambdaFunction",
+    awsRegion: "some region",
+    timeZone: "some time zone",
     // more data
     message: "Hello world"
-    // and more, like line number.
    }
 ```

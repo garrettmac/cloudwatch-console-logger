@@ -1,6 +1,3 @@
-const uuid = require('uuid/v4');
-const moment = require('moment');
-const correlationId = (global.correlationId = uuid());
 /*
   * lets create instances of the console objects as a backup unless we wanna revert back as some point.
   * We do not do this but can if we set an enviornment variable DISABLE_LAMBDA_LOGGER to true.
@@ -21,50 +18,17 @@ const getLogLevel = (level = 0) =>
     0: 'NOTSET'
   }[level]);
 let loggerMessageObj = {};
-/*
- "initCloudwatchConsole" is not wired up now, seems like a bug with node 6.
- AWS seems to run the "handler" silently a few times calling the imported functions
- before they are ready, in this case sets overides before the lambda starts and cloudwatch farts out.
- Works fine when using node 8 and up.
- So when our lambda is running on node 8 we can just add this in our "handler" and that's all we need:
- > "Logger.initCloudwatchConsole( event, context )"
-*/
-const initCloudwatchConsole = function(event, ctx) {
-  loggerMessageObj = {
-    executionEnv: process.env.AWS_EXECUTION_ENV,
-    awsLambdaFunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
-    awsRegion: process.env.AWS_REGION,
-    timeZone: process.env.TZ,
-    enviornment: process.env.NODE_ENV,
-    'lambda-request-id': event.requestContext.requestId,
-    'x-amzn-requestid': ctx.awsRequestId,
-    'x-amz-cf-id': event.headers['X-Amz-Cf-Id'],
-    'x-amzn-trace-id': event.headers['X-Amzn-Trace-Id'],
-    // TODO: next step is to get a correlation id created by akamai. Not sure how it's passed and I would start by checking the headers when it's in the stage or prod env.
-    asctime: moment().format('YYYY-MM-DD HH:MM:SS,SSS'),
-    'pr-number': process.env.PR || 'UNDEF',
-    cookies: event.headers.Cookie,
-    headers: event.headers,
-    hostName: event.headers.Host
-  };
-  overrideConsole();
-  if (process.env.DISABLE_CONSOLE_OVERIDE) {
-    resetToDefaultConsole();
-  }
-  console.info(`Lambda function '${process.env.AWS_LAMBDA_FUNCTION_NAME}' default log level is set to ${getLogLevel(process.env.LOG_LEVEL)}`);
-};
-const init = function(o) {
+const setCloudWatchMessageDefaults = function(o) {
   loggerMessageObj = o;
 };
 // this is what overrides the console object
 const consoleOverride = function() {
   const msg = Array.prototype.slice.call(arguments);
-  const asctime = moment().format('YYYY-MM-DD HH:MM:SS,SSS');
   try {
     throw new Error();
   } catch (error) {
     let stackTrace;
-    if (!process.env.DISABLE_STACKTRACE) {
+    if (process.env.ENABLE_STACKTRACE) {
       stackTrace = error.stack // Grabs the stack trace
         .split('\n')[2] // Grabs third line
         .trim() // Removes spaces
@@ -91,7 +55,6 @@ const consoleOverride = function() {
           },
           // output message
           message,
-          asctime,
           stackTrace,
           logLevel,
           logMethod,
@@ -108,7 +71,7 @@ const resetToDefaultConsole = () => {
   global.console.error = consoleError;
 };
 const overrideConsole = () => {
-  if (process.env.DISABLE_CONSOLE_OVERIDE === 'true') return;
+  if (process.env.ENABLE_CONSOLE_OVERIDE === 'true') return resetToDefaultConsole();
   global.console.log = consoleOverride.bind({
     logMethod: 'log',
     logValue: '20'
@@ -133,9 +96,7 @@ global.logger = {
   error: consoleOverride.bind({ logMethod: 'error', logValue: '40' })
 };
 exports.loggerMessageObj = loggerMessageObj;
-exports.init = init;
-exports.correlationId = correlationId;
-exports.initCloudwatchConsole = initCloudwatchConsole;
+exports.setCloudWatchMessageDefaults = setCloudWatchMessageDefaults;
 exports.getLogLevel = getLogLevel;
 exports.overrideConsole = overrideConsole;
 exports.consoleOverride = consoleOverride;

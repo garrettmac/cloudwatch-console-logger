@@ -1,6 +1,6 @@
 {
   "name": "cloudwatch-console-logger",
-  "version": "0.9.8",
+  "version": "1.0.0",
   "description": "cloudwatch-console-logger",
   "main": "./dist/index.js",
   "scripts": {

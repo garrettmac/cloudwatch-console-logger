@@ -1,53 +1,12 @@
 import Logger from './index';
 import intercept from 'intercept-stdout';
-const event = {
-  httpMethod: 'GET',
-  path: '/',
-  resource: '/{proxy+}',
-  queryStringParameters: null,
-  headers: {
-    Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'CloudFront-Forwarded-Proto': 'https',
-    'CloudFront-Is-Desktop-Viewer': 'true',
-    'CloudFront-Is-Mobile-Viewer': 'false',
-    'CloudFront-Is-SmartTV-Viewer': 'false',
-    'CloudFront-Is-Tablet-Viewer': 'false',
-    'CloudFront-Viewer-Country': 'CA',
-    dnt: '1',
-    Host: 'example.com',
-    Referer: 'https://example.com/',
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_3) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/65.0.3325.162 Safari/537.36',
-    'X-Forwarded-Port': '111',
-    'X-Forwarded-Proto': 'http'
-  },
-  requestContext: {
-    requestId: 'XXXXXXXXXX'
-  }
-};
-const context = {
-  callbackWaitsForEmptyEventLoop: true,
-  logGroupName: 'someGroup',
-  logStreamName: '2018/03/20/[$LATEST]XXXXXXXXXXXXXXXXXXXXXXXXXXXXXX',
-  functionName: 'myLambdaFunction',
-  memoryLimitInMB: '256',
-  functionVersion: '$LATEST',
-  invokeid: 'XXXXX-XXXX-XXXX-XXXXX-XXXXXXXXXX',
-  awsRequestId: 'a17a32b2-XXXX-XXXX-XXXXX-XXXXXXXXXX',
-  invokedFunctionArn: 'arn:aws:lambda:us-west-2:XXXXX:function:myLambdaFunction'
-};
 const MOCK_ENV = {
-  _X_AMZN_TRACE_ID: 'XXXXXXXXXXXXXXXXXXXXX',
-  ACCESS_CONTROL_ON: 'false',
-  AWS_EXECUTION_ENV: 'AWS_Lambda_nodejs6.10',
+  AWS_EXECUTION_ENV: 'AWS_Lambda_nodejs',
   AWS_LAMBDA_FUNCTION_NAME: 'myLambdaFunction',
-  AWS_REGION: 'west-2',
-  AWS_XRAY_CONTEXT_MISSING: 'LOG_ERROR',
+  AWS_REGION: 'usa',
   LOG_LEVEL: '0',
   ENABLE_CONSOLE_OVERIDE: true,
   ENABLE_STACKTRACE: false,
-  PR: '12345', //can set enviorment variable
   STAGE: '',
   TZ: 'pacific'
 };
@@ -57,7 +16,7 @@ const loggerItems = [
   { method: 'warn', logLevel: '30' },
   { method: 'error', logLevel: '40' }
 ];
-const loggerFunctions = [ 'init', 'initCloudwatchConsole', 'getLogLevel', 'overrideConsole', 'consoleOverride', 'resetToDefaultConsole' ];
+const loggerFunctions = [ 'setCloudWatchMessageDefaults', 'getLogLevel', 'overrideConsole', 'consoleOverride', 'resetToDefaultConsole' ];
 // extend jests "expect" for custom checkers
 expect.extend({
   toHaveLogLevel(log, argument) {
@@ -88,16 +47,18 @@ expect.extend({
 describe('Cloudwatch Console Logger', () => {
   let logs;
   let defaultMessage;
-  let hookedIntercept; // when you call this it enables the output from logs
-  let unhook_intercept; // when you call this it enables the output from logs
+  let hookedIntercept;
+  let unhook_intercept;
   const REAL_ENV = process.env;
   beforeEach(() => {
     jest.resetModules();
     logs = [];
+    process.env = { ...MOCK_ENV };
+    delete process.env.NODE_ENV;
     defaultMessage = {
       awsLambdaFunctionName: 'myLambdaFunction',
-      awsRegion: 'west-2',
-      executionEnv: 'AWS_Lambda_nodejs6.10',
+      awsRegion: 'usa',
+      executionEnv: 'AWS_Lambda_nodejs',
       headers: {
         Accept: 'image/webp,image/apng,image/*,*/*;q=0.8',
         'Accept-Encoding': 'gzip, deflate, br',
@@ -116,7 +77,7 @@ describe('Cloudwatch Console Logger', () => {
       hostName: 'example.com',
       logLevel: 'INFO',
       message: "Lambda function 'myLambdaFunction' default log level is set to NOTSET",
-      'pr-number': '12345',
+      'pr-number': process.env.PR || process.env.PR_NUMBER || 'UNDEF',
       timeZone: 'pacific'
     };
     //this silences logs from being displayed
@@ -134,11 +95,9 @@ describe('Cloudwatch Console Logger', () => {
             o = JSON.parse(o);
           } catch (error) {}
           return o;
-        })
+        }).filter(o => o)
       ;
     };
-    process.env = { ...MOCK_ENV };
-    delete process.env.NODE_ENV;
   });
   afterEach(() => {
     unhook_intercept();
@@ -150,7 +109,8 @@ describe('Cloudwatch Console Logger', () => {
       expect(process.env).toMatchObject(MOCK_ENV);
     });
     it('it should contain the "initiated Lambda Logger" message', () => {
-      Logger.initCloudwatchConsole(event, context);
+      Logger.setCloudWatchMessageDefaults(defaultMessage);
+      logger.info(`Lambda function '${ process.env.AWS_LAMBDA_FUNCTION_NAME }' default log level is set to NOTSET`);
       unhook_intercept();
       const [ initialMessage ] = logs;
       expect(initialMessage).toMatchObject(defaultMessage);
@@ -174,6 +134,12 @@ describe('Cloudwatch Console Logger', () => {
     beforeEach(() => {
       jest.resetModules();
       process.env = { ...MOCK_ENV };
+      delete process.env.NODE_ENV;
+    });
+    afterEach(() => {
+      unhook_intercept();
+      logs = [];
+      process.env = REAL_ENV;
     });
     loggerFunctions.forEach(fn => {
       it(`"Logger.${fn}" should be defined`,()=>{
@@ -181,37 +147,55 @@ describe('Cloudwatch Console Logger', () => {
       });
     });
     it('should not return "pr-number" if "process.env.PR" is not defined',()=>{
-      delete process.env.PR;
-      Logger.initCloudwatchConsole(event, context);
+      jest.resetModules();
+      jest.spyOn(Logger, 'setCloudWatchMessageDefaults');
+      // process.env = MOCK_ENV;
+      Logger.setCloudWatchMessageDefaults(defaultMessage);
+      logger.info(`Lambda function '${ process.env.AWS_LAMBDA_FUNCTION_NAME }' default log level is set to NOTSET`);
       unhook_intercept();
+      expect(process.env.PR).toBeUndefined();
       const [ initialMessage ] = logs;
       expect(initialMessage['pr-number']).toMatch('UNDEF');
     });
     it('should return "pr-number" if "process.env.PR" is defined',()=>{
       process.env.PR = '123';
-      Logger.initCloudwatchConsole(event, context);
+      Logger.setCloudWatchMessageDefaults({ defaultMessage,...{ 'pr-number' :'123' } });
+      logger.info(`Lambda function '${ process.env.AWS_LAMBDA_FUNCTION_NAME }' default log level is set to NOTSET`);
       unhook_intercept();
       const [ initialMessage ] = logs;
-      expect(initialMessage['pr-number']).toMatch('123');
+      expect(process.env).toMatchObject(MOCK_ENV);
+      expect(initialMessage['pr-number']).toBe('123');
     });
     it('should call "getLogLevel()"',()=>{
       delete process.env.LOG_LEVEL;
-      jest.spyOn(Logger, 'initCloudwatchConsole');
-      Logger.initCloudwatchConsole(event, context);
+      jest.spyOn(Logger, 'setCloudWatchMessageDefaults');
+      Logger.setCloudWatchMessageDefaults(defaultMessage);
+      logger.info(`Lambda function '${ process.env.AWS_LAMBDA_FUNCTION_NAME }' default log level is set to NOTSET`);
       unhook_intercept();
       const [ initialMessage ] = logs;
       expect(initialMessage.logLevel).toMatch('INFO');
     });
     it('should get component name',()=>{
       jest.spyOn(logger, 'log');
-      logger.log('[src/home] fo bar');
+      logger.log('[some/path] some message');
       unhook_intercept();
       const [ message ] = logs;
-      expect(message.componentName).toMatch('src/home');
+      expect(message.componentName).toMatch('some/path');
     });
-    it('should start with bracket to get name if log " [src/home] fo bar"',()=>{
+    it('should get string when "ENABLE_CONSOLE_OVERIDE" is true',()=>{
+      jest.resetModules();
+      jest.spyOn(console, 'log');
+      jest.spyOn(Logger, 'overrideConsole');
+      process.env = { ...MOCK_ENV, ...{ ENABLE_CONSOLE_OVERIDE:'true' } };
+      Logger.overrideConsole();
+      console.log('[some/path] some message');
+      unhook_intercept();
+      const [ blub, message ] = logs; //  eslint-disable-line no-unused-vars
+      expect(message).toContain('[some/path] some message');
+    });
+    it('should start with bracket to get name if log " [some/path] some message"',()=>{
       jest.spyOn(logger, 'log');
-      logger.log(' [src/home] fo bar');
+      logger.log(' [some/path] some message');
       unhook_intercept();
       const [ message ] = logs;
       expect(message.componentName).toBeUndefined();
@@ -224,22 +208,10 @@ describe('Cloudwatch Console Logger', () => {
       expect(message.componentName).toBeUndefined();
     });
     it('should call "resetToDefaultConsole()" if process.env.ENABLE_CONSOLE_OVERIDE is set to false ',()=>{
-      process.env = { ...MOCK_ENV,ENABLE_CONSOLE_OVERIDE:false } ;
+      process.env = { ...MOCK_ENV,ENABLE_CONSOLE_OVERIDE:'true' } ;
       const overrideConsole = jest.spyOn(Logger, 'overrideConsole');
-      expect(overrideConsole).not.toHaveBeenCalled();
+      expect(overrideConsole).toHaveBeenCalled();
     });
-    // it('should use default console if "process.env.DISABLE_CONSOLE_OVERIDE" is defined',()=>{
-    //   let BASE_DISABLE_CONSOLE_OVERIDE = process.env.DISABLE_CONSOLE_OVERIDE
-    //   jest.spyOn(Logger, "initCloudwatchConsole");
-    //   const resetToDefaultConsole = jest.spyOn(Logger, "resetToDefaultConsole");
-    //   process.env.DISABLE_CONSOLE_OVERIDE = true
-    //   Logger.initCloudwatchConsole(event, context);
-    //   unhook_intercept();
-    //   expect(Logger.resetToDefaultConsole).toHaveBeenCalled();
-    //   const [ initialMessage ] = logs;
-    //   expect(process.env.DISABLE_CONSOLE_OVERIDE).toBe(true);
-    //   process.env.DISABLE_CONSOLE_OVERIDE =BASE_DISABLE_CONSOLE_OVERIDE
-    // });
     it('"resetToDefaultConsole()" => should reset console.log to global.console.log if called',()=>{
       Logger.resetToDefaultConsole();
       expect(console.log).toBe(global.console.log);

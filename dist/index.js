@@ -2,9 +2,6 @@
 
 var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
 
-var uuid = require('uuid/v4');
-var moment = require('moment');
-var correlationId = global.correlationId = uuid();
 /*
   * lets create instances of the console objects as a backup unless we wanna revert back as some point.
   * We do not do this but can if we set an enviornment variable DISABLE_LAMBDA_LOGGER to true.
@@ -27,50 +24,17 @@ var getLogLevel = function getLogLevel() {
   }[level];
 };
 var loggerMessageObj = {};
-/*
- "initCloudwatchConsole" is not wired up now, seems like a bug with node 6.
- AWS seems to run the "handler" silently a few times calling the imported functions
- before they are ready, in this case sets overides before the lambda starts and cloudwatch farts out.
- Works fine when using node 8 and up.
- So when our lambda is running on node 8 we can just add this in our "handler" and that's all we need:
- > "Logger.initCloudwatchConsole( event, context )"
-*/
-var initCloudwatchConsole = function initCloudwatchConsole(event, ctx) {
-  loggerMessageObj = {
-    executionEnv: process.env.AWS_EXECUTION_ENV,
-    awsLambdaFunctionName: process.env.AWS_LAMBDA_FUNCTION_NAME,
-    awsRegion: process.env.AWS_REGION,
-    timeZone: process.env.TZ,
-    enviornment: process.env.NODE_ENV,
-    'lambda-request-id': event.requestContext.requestId,
-    'x-amzn-requestid': ctx.awsRequestId,
-    'x-amz-cf-id': event.headers['X-Amz-Cf-Id'],
-    'x-amzn-trace-id': event.headers['X-Amzn-Trace-Id'],
-    // TODO: next step is to get a correlation id created by akamai. Not sure how it's passed and I would start by checking the headers when it's in the stage or prod env.
-    asctime: moment().format('YYYY-MM-DD HH:MM:SS,SSS'),
-    'pr-number': process.env.PR || 'UNDEF',
-    cookies: event.headers.Cookie,
-    headers: event.headers,
-    hostName: event.headers.Host
-  };
-  overrideConsole();
-  if (process.env.DISABLE_CONSOLE_OVERIDE) {
-    resetToDefaultConsole();
-  }
-  console.info('Lambda function \'' + process.env.AWS_LAMBDA_FUNCTION_NAME + '\' default log level is set to ' + getLogLevel(process.env.LOG_LEVEL));
-};
-var init = function init(o) {
+var setCloudWatchMessageDefaults = function setCloudWatchMessageDefaults(o) {
   loggerMessageObj = o;
 };
 // this is what overrides the console object
 var consoleOverride = function consoleOverride() {
   var msg = Array.prototype.slice.call(arguments);
-  var asctime = moment().format('YYYY-MM-DD HH:MM:SS,SSS');
   try {
     throw new Error();
   } catch (error) {
     var stackTrace = void 0;
-    if (!process.env.DISABLE_STACKTRACE) {
+    if (process.env.ENABLE_STACKTRACE) {
       stackTrace = error.stack // Grabs the stack trace
       .split('\n')[2] // Grabs third line
       .trim() // Removes spaces
@@ -97,7 +61,6 @@ var consoleOverride = function consoleOverride() {
       },
       // output message
       message: message,
-      asctime: asctime,
       stackTrace: stackTrace,
       logLevel: logLevel,
       logMethod: logMethod,
@@ -113,7 +76,7 @@ var resetToDefaultConsole = function resetToDefaultConsole() {
   global.console.error = consoleError;
 };
 var overrideConsole = function overrideConsole() {
-  if (process.env.DISABLE_CONSOLE_OVERIDE === 'true') return;
+  if (process.env.ENABLE_CONSOLE_OVERIDE === 'true') return resetToDefaultConsole();
   global.console.log = consoleOverride.bind({
     logMethod: 'log',
     logValue: '20'
@@ -138,9 +101,7 @@ global.logger = {
   error: consoleOverride.bind({ logMethod: 'error', logValue: '40' })
 };
 exports.loggerMessageObj = loggerMessageObj;
-exports.init = init;
-exports.correlationId = correlationId;
-exports.initCloudwatchConsole = initCloudwatchConsole;
+exports.setCloudWatchMessageDefaults = setCloudWatchMessageDefaults;
 exports.getLogLevel = getLogLevel;
 exports.overrideConsole = overrideConsole;
 exports.consoleOverride = consoleOverride;
